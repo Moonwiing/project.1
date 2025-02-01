@@ -1,0 +1,161 @@
+# Load Required Libraries
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(DT)
+library(plotly)
+library(htmltools)
+
+# --------------------------
+# 1. Load and Prepare Data
+# --------------------------
+
+# Load spatial data (Kenyan counties shapefile)
+gdb_path <- "C:/Users/Ice Vagabond/Downloads/ken_adm_iebc_20191031_shp"
+counties_sf <- st_read(gdb_path, layer = "ken_admbnda_adm1_iebc_20191031")
+
+# Load county economic data
+county_data <- tibble::tribble(
+  ~County, ~GDP_2017, ~Population_2023, ~Key_Activities,
+  "Nairobi City", 1542, 4750056, "Finance, Real Estate, Services, Manufacturing",
+  "Nakuru", 434, 2347849, "Agriculture, Tourism, Manufacturing",
+  "Mombasa", 327, 1311860, "Port Activities, Tourism, Manufacturing",
+  "Kiambu", 316, 2652880, "Horticulture, Manufacturing, Real Estate",
+  "Meru", 205, 1625982, "Agriculture, Livestock, Trade",
+  "Kakamega", 198, 2002435, "Agriculture, Small-Scale Trade",
+  "Kisumu", 192, 1248474, "Fishing, Trade, Services",
+  "Uasin Gishu", 186, 1257330, "Maize Farming, Dairy, Transport",
+  "Machakos", 176, 1487758, "Trade, Quarrying, Manufacturing",
+  "Bungoma", 168, 1786973, "Sugarcane Farming, Trade",
+  "Nyeri", 153, 835408, "Coffee, Tea, Dairy Farming",
+  "Kilifi", 148, 1577335, "Tourism, Fishing, Agriculture",
+  "Kajiado", 142, 1268261, "Livestock, Tourism, Sand Harvesting",
+  "Kericho", 138, 954896, "Tea Plantations, Floriculture",
+  "Laikipia", 135, 561223, "Agriculture, Wildlife Tourism",
+  "Trans Nzoia", 130, 1069039, "Large-Scale Grain Farming",
+  "Murang'a", 125, 1112288, "Coffee, Tea, Dairy",
+  "Bomet", 120, 939761, "Tea, Dairy Farming",
+  "Narok", 115, 1284204, "Tourism, Livestock",
+  "Turkana", 110, 1022773, "Oil Exploration, Livestock",
+  "Homa Bay", 105, 1231659, "Fishing, Agriculture",
+  "Kisii", 100, 1344907, "Bananas, Tea, Trade",
+  "Nyandarua", 95, 695531, "Potato Farming, Dairy",
+  "Nandi", 90, 951460, "Tea, Dairy, Horticulture",
+  "Tharaka-Nithi", 85, 416383, "Livestock, Subsistence Farming",
+  "Taita-Taveta", 80, 363990, "Mining, Tourism",
+  "Kwale", 75, 944464, "Tourism, Agriculture",
+  "Migori", 70, 1234082, "Gold Mining, Fishing",
+  "Makueni", 65, 1042300, "Drought-Resistant Crops",
+  "Siaya", 60, 1059458, "Fishing, Subsistence Farming",
+  "Busia", 55, 968763, "Cross-Border Trade, Agriculture",
+  "Vihiga", 50, 625765, "Subsistence Farming, Small-Scale Trade",
+  "Nyamira", 45, 657502, "Tea, Coffee, Bananas",
+  "West Pokot", 40, 676326, "Livestock, Subsistence Farming",
+  "Baringo", 35, 733333, "Livestock, Tourism",
+  "Samburu", 30, 348298, "Pastoralism, Limited Agriculture",
+  "Tana River", 25, 352549, "Irrigation Farming, Livestock",
+  "Marsabit", 20, 515292, "Pastoralism, Salt Mining",
+  "Isiolo", 18, 315937, "Livestock, Small-Scale Trade",
+  "Garissa", 15, 927031, "Livestock, Cross-Border Trade",
+  "Lamu", 12, 167332, "Fishing, Tourism",
+  "Wajir", 10.8, 870636, "Livestock, Informal Trade",
+  "Mandera", 9, 959236, "Livestock, Cross-Border Trade",
+  "Embu", 85, 648425, "Coffee, Macadamia Nuts, Dairy",
+  "Kitui", 70, 1229790, "Drought-Resistant Crops, Mining",
+  "Kirinyaga", 88, 653112, "Rice Farming, Tea, Horticulture",
+  "Elgeyo-Marakwet", 60, 495239, "Dairy Farming, Wheat, Tourism"
+)
+
+# Merge the spatial data with the county data
+counties_sf <- counties_sf %>%
+  left_join(county_data, by = c("ADM1_EN" = "County"))
+
+# --------------------------
+# 2. Interactive Leaflet Map
+# --------------------------
+
+pal <- colorNumeric("viridis", domain = counties_sf$GDP_2017)
+
+leaflet_map <- leaflet(counties_sf) %>%
+  addProviderTiles("CartoDB.Positron") %>%
+  addPolygons(
+    fillColor = ~pal(GDP_2017),
+    fillOpacity = 0.7,
+    color = "white",
+    weight = 1,
+    label = ~lapply(
+      paste(
+        "<strong>", ADM1_EN, "</strong><br>",
+        "GDP (2017): KSh ", GDP_2017, "B<br>",
+        "Population (2023): ", format(Population_2023, big.mark = ","), "<br>",
+        "Key Sectors: ", Key_Activities
+      ), HTML
+    ),
+    highlightOptions = highlightOptions(weight = 3, color = "#444444", bringToFront = TRUE)
+  ) %>%
+  addLegend(
+    pal = pal,
+    values = ~GDP_2017,
+    title = "GDP (KSh Billion)",
+    position = "bottomright"
+  )
+
+# --------------------------
+# 3. Interactive Data Table
+# --------------------------
+
+interactive_table <- datatable(
+  county_data,
+  rownames = FALSE,
+  extensions = "Buttons",
+  options = list(
+    dom = "Bfrtip",
+    buttons = c("csv", "excel"),
+    pageLength = 15,
+    scrollX = TRUE
+  ),
+  caption = "Full Kenya County Dataset (2017 GDP + 2023 Population Estimates)"
+) %>%
+  formatRound("GDP_2017", 1) %>%
+  formatCurrency("Population_2023", currency = "", interval = 3, mark = ",")
+
+# --------------------------
+# 4. Scatter Plot (GDP vs. Population)
+# --------------------------
+
+scatter_plot <- plot_ly(
+  county_data,
+  x = ~GDP_2017,
+  y = ~Population_2023,
+  type = "scatter",
+  mode = "markers",
+  color = ~County,
+  text = ~paste(
+    County, "<br>",
+    "GDP: KSh", GDP_2017, "B<br>",
+    "Population: ", format(Population_2023, big.mark = ",")
+  ),
+  hoverinfo = "text",
+  marker = list(size = 12, opacity = 0.8)
+) %>%
+  layout(
+    title = "County GDP vs Population Relationship",
+    xaxis = list(title = "GDP (KSh Billion)"),
+    yaxis = list(title = "Population (2023)"),
+    showlegend = FALSE
+  )
+
+# --------------------------
+# 5. Display Results
+# --------------------------
+
+print(leaflet_map)    # Show map in Viewer
+interactive_table     # Show table in Viewer
+scatter_plot          # Show plot in Viewer
+
+# Export to HTML (optional)
+# htmltools::save_html(leaflet_map, "kenya_map.html")
+# htmltools::save_html(interactive_table, "kenya_table.html")
+
+
+
